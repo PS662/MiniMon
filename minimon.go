@@ -131,12 +131,14 @@ func monitorDirectory(path string, interval time.Duration) {
 
 func monitorGit(filePath string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
-	changeCount := 0
+	var previousChangeCount int
 
 	go func() {
 		for range ticker.C {
+			changeCount := 0
+
 			// Check for git diff changes and emit notifications
-			cmd := exec.Command("git", "diff", "--numstat", filePath)
+			cmd := exec.Command("git", "diff", "--numstat", "HEAD", filePath)
 			var out bytes.Buffer
 			cmd.Stdout = &out
 			err := cmd.Run()
@@ -159,13 +161,21 @@ func monitorGit(filePath string, interval time.Duration) {
 				}
 			}
 
-			if changeCount > 0 {
-				notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeCount, interval.Minutes())
-				log.Info().Msgf(notificationMessage)
-				beeep.Notify("MiniMon Notification", notificationMessage, "")
-				changeCount = 0
+			if changeCount != previousChangeCount || changeCount == 0 {
+				previousChangeCount = changeCount
+
+				if changeCount > 0 {
+					log.Info().Int("changes", changeCount).Msg("Accumulating changes from git monitoring")
+					notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeCount, interval.Minutes())
+					log.Info().Msgf(notificationMessage)
+					beeep.Notify("MiniMon Notification", notificationMessage, "")
+				} else {
+					notificationMessage := fmt.Sprintf("You have not made any changes for the last %.2f minutes!!", interval.Minutes())
+					log.Info().Msgf(notificationMessage)
+					beeep.Notify("MiniMon Notification", notificationMessage, "")
+				}
 			} else {
-				notificationMessage := fmt.Sprintf("You have not saved any changes for last %.2f minutes!!", interval.Minutes())
+				notificationMessage := fmt.Sprintf("You have not made any new changes for the last %.2f minutes!!", interval.Minutes())
 				log.Info().Msgf(notificationMessage)
 				beeep.Notify("MiniMon Notification", notificationMessage, "")
 			}
