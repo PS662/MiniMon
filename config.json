@@ -1,0 +1,10 @@
+{
+  "monitor_sources": {
+    "mon_src1": "/home/prateek/Sources/MiniMon/feeds/disk_rolling_log_feed_py/temp_test/",
+    "mon_src2": "1234", 
+    "mon_src3": "/path/to/file.log",
+    "mon_src4": "/path/to/directory2"
+  },
+  "log_dir": "/path/to/log/directory",
+  "notification_interval": 600
+}
