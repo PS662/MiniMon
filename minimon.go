@@ -113,7 +113,7 @@ func monitorDirectory(path string, interval time.Duration, logDir, logLevel stri
 			case <-ticker.C:
 				// Notify after every interval
 				if changeCount > 0 {
-					notificationMessage := fmt.Sprintf("You have made %d changes in the last %d seconds.", changeCount, int(interval.Seconds()))
+					notificationMessage := fmt.Sprintf("You have made %d saves in the last %d seconds. Remember to save your work", changeCount, int(interval.Seconds()))
 					beeep.Notify("MiniMon Notification", notificationMessage, "")
 					changeCount = 0 // Reset count after notification
 				}
