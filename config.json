@@ -1,11 +1,15 @@
 {
   "monitor_sources": [
-    "/home/prateek/Sources/MiniMon/feeds/disk_rolling_log_feed_py/temp_test/",
-    "1234", 
-    "/path/to/file.log",
-    "/path/to/directory2"
+    {
+      "path": "./feeds/disk_rolling_log_feed_py/temp_test/",
+      "source_type": "dir"
+    },
+    {
+      "path": "./feeds/git_file/test_file.git",
+      "source_type": "git_file"
+    }
   ],
-  "log_dir": "/path/to/log/directory",
+  "log_dir": "./logs",
   "notification_interval": 600,
-  "log_level": "info"
+  "log_level": "console"
 }

@@ -16,6 +16,7 @@ cd "$MINIMON_DIR" || exit
 go mod init minimon
 go get github.com/fsnotify/fsnotify
 go get github.com/gen2brain/beeep
+go get github.com/rs/zerolog/log
 go build -o "$MINIMON_BINARY" minimon.go
 
 # Ensure the build was successful
