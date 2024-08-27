@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,87 +132,106 @@ func monitorDirectory(path string, interval time.Duration) {
 
 func monitorGit(filePath string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
+
+	var initialChangeCount int
 	var previousChangeCount int
+	var totalChangeCount int
+	var initialized bool
+
+	// Function to fetch the current change count using git diff
+	getChangeCount := func() (int, error) {
+		cmdGetRepoPath := exec.Command("git", "rev-parse", "--show-toplevel")
+		cmdGetRepoPath.Dir = filepath.Dir(filePath) // Set the directory to the file's directory
+		var repoPathOut bytes.Buffer
+		cmdGetRepoPath.Stdout = &repoPathOut
+		err := cmdGetRepoPath.Run()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to determine Git repository path")
+			return 0, err
+		}
+
+		gitRepoPath := strings.TrimSpace(repoPathOut.String())
+
+		if err := os.Chdir(gitRepoPath); err != nil {
+			log.Error().Err(err).Msgf("Failed to change directory to %s", gitRepoPath)
+			return 0, err
+		}
+
+		// Check for git diff changes and emit notifications
+		cmd := exec.Command("git", "diff", "--numstat", "HEAD", filePath)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		err = cmd.Run()
+
+		// Handle exit status 1 (no differences found)
+		if err != nil {
+			if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+				// Exit status 1 indicates no changes, which is not an error for our purpose
+				log.Info().Msg("No changes detected by git diff")
+				return 0, nil
+			} else {
+				log.Error().Err(err).Msg("Failed to run git diff")
+				return 0, err
+			}
+		}
+
+		// Parse the output to count the number of lines changed
+		lines := strings.Split(out.String(), "\n")
+		changeCount := 0
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) >= 1 {
+				added, _ := strconv.Atoi(fields[0])
+				removed, _ := strconv.Atoi(fields[1])
+				changeCount += added + removed
+			}
+		}
+		return changeCount, nil
+	}
 
 	go func() {
 		for range ticker.C {
-			changeCount := 0 // Reset changeCount at the start of every interval
-
-			// Extract the Git repository path from the file path
-			cmdGetRepoPath := exec.Command("git", "rev-parse", "--show-toplevel")
-			cmdGetRepoPath.Dir = filepath.Dir(filePath) // Set the directory to the file's directory
-			var repoPathOut bytes.Buffer
-			cmdGetRepoPath.Stdout = &repoPathOut
-			err := cmdGetRepoPath.Run()
+			currentChangeCount, err := getChangeCount()
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to determine Git repository path")
 				continue
 			}
 
-			gitRepoPath := strings.TrimSpace(repoPathOut.String())
-
-			if err := os.Chdir(gitRepoPath); err != nil {
-				log.Error().Err(err).Msgf("Failed to change directory to %s", gitRepoPath)
+			// On the first run, log the initial change count
+			if !initialized {
+				initialChangeCount = currentChangeCount
+				previousChangeCount = currentChangeCount
+				initialized = true
+				log.Info().Msgf("Beginning with %d changes detected by git.", initialChangeCount)
 				continue
 			}
 
-			// Check for git diff changes and emit notifications
-			cmd := exec.Command("git", "diff", "--numstat", "HEAD", filePath)
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			err = cmd.Run()
+			// Calculate the absolute difference between the previous and current change count
+			changeDifference := int(math.Abs(float64(currentChangeCount - previousChangeCount)))
+			totalChangeCount += changeDifference
+			log.Info().Int("changes", totalChangeCount).Msg("Total changes till now")
 
-			// Handle exit status 1 (no differences found)
-			if err != nil {
-				if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
-					// Exit status 1 indicates no changes, which is not an error for our purpose
-					log.Info().Msg("No changes detected by git diff")
-				} else {
-					log.Error().Err(err).Msg("Failed to run git diff")
-					continue
-				}
-			}
-
-			// Parse the output to count the number of lines changed
-			lines := strings.Split(out.String(), "\n")
-			for _, line := range lines {
-				if strings.TrimSpace(line) == "" {
-					continue
-				}
-				fields := strings.Fields(line)
-				if len(fields) >= 1 {
-					added, _ := strconv.Atoi(fields[0])
-					removed, _ := strconv.Atoi(fields[1])
-					changeCount += added + removed
-				}
-			}
-
-			// Compare the current change count with the previous cached change count
-			if changeCount != previousChangeCount {
-				// Update the previousChangeCount cache
-				previousChangeCount = changeCount
-
-				if changeCount > 0 {
-					log.Info().Int("changes", changeCount).Msg("Accumulating changes from git monitoring")
-					notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeCount, interval.Minutes())
-					log.Info().Msgf(notificationMessage)
-					beeep.Notify("MiniMon Notification", notificationMessage, "")
-				} else {
-					notificationMessage := fmt.Sprintf("Are you saving your work? You have not saved in the last %.2f minutes.", interval.Minutes())
-					log.Info().Msgf(notificationMessage)
-					beeep.Notify("MiniMon Notification", notificationMessage, "")
-				}
+			// Log and notify based on the difference
+			if changeDifference > 0 {
+				log.Info().Int("changes", changeDifference).Msg("Accumulating changes from git monitoring")
+				notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeDifference, interval.Minutes())
+				log.Info().Msgf(notificationMessage)
+				beeep.Notify("MiniMon Notification", notificationMessage, "")
 			} else {
 				notificationMessage := fmt.Sprintf("You have not made any new changes for the last %.2f minutes!!", interval.Minutes())
 				log.Info().Msgf(notificationMessage)
 				beeep.Notify("MiniMon Notification", notificationMessage, "")
 			}
+
+			// Update the previousChangeCount
+			previousChangeCount = currentChangeCount
 		}
 	}()
 
 	select {}
 }
-
 
 func main() {
 	configPath := os.Getenv("MINIMON_CONFIG")
