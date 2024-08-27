@@ -167,12 +167,12 @@ func monitorDirectory(path string, config NotificationConfig) {
 				log.Error().Err(err).Msg("Watcher error")
 			case <-ticker.C:
 				if changeCount > 0 {
-					log.Info().Msgf("Change detected, preparing to send change notifications. Change count: %d", changeCount)
-					for i, notification := range config.NotificationSet {
-						log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
+					//log.Info().Msgf("Change detected, preparing to send change notifications. Change count: %d", changeCount)
+					for _, notification := range config.NotificationSet {
+						//log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
 						if notification.IsChange {
 							notificationMessage := constructNotificationMessage(notification, changeCount, intervalTime, true)
-							log.Info().Msgf("Sending change notification: %s", notificationMessage)
+							//log.Info().Msgf("Sending change notification: %s", notificationMessage)
 							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 							if err != nil {
 								log.Error().Err(err).Msg("Failed to send change notification")
@@ -187,11 +187,11 @@ func monitorDirectory(path string, config NotificationConfig) {
 						log.Info().Msg("Max idle time reached, stopping notifications.")
 						continue
 					}
-					for i, notification := range config.NotificationSet {
-						log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
+					for _, notification := range config.NotificationSet {
+						//log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
 						if notification.IsIdle {
 							notificationMessage := constructNotificationMessage(notification, changeCount, idleTime, false)
-							log.Info().Msgf("Sending idle notification: %s", notificationMessage)
+							//log.Info().Msgf("Sending idle notification: %s", notificationMessage)
 							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 							if err != nil {
 								log.Error().Err(err).Msg("Failed to send idle notification")
@@ -219,7 +219,6 @@ func monitorGit(filePath string, config NotificationConfig) {
 	var initialChangeCount int
 	var previousChangeCount int
 	var totalChangeCount int
-	var initialized bool
 	idleTime := 0.0
 	intervalTime := float64(config.NotificationInterval) / 60.0
 
@@ -277,18 +276,21 @@ func monitorGit(filePath string, config NotificationConfig) {
 	}
 
 	go func() {
+		// Perform the initial check immediately
+		currentChangeCount, err := getChangeCount()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get initial change count")
+			return
+		}
+
+		// Initialize counts
+		initialChangeCount = currentChangeCount
+		previousChangeCount = currentChangeCount
+		log.Info().Msgf("Beginning with %d changes detected by git.", initialChangeCount)
+
 		for range ticker.C {
 			currentChangeCount, err := getChangeCount()
 			if err != nil {
-				continue
-			}
-
-			// On the first run, initialize counts
-			if !initialized {
-				initialChangeCount = currentChangeCount
-				previousChangeCount = currentChangeCount
-				initialized = true
-				log.Info().Msgf("Beginning with %d changes detected by git.", initialChangeCount)
 				continue
 			}
 
@@ -308,12 +310,12 @@ func monitorGit(filePath string, config NotificationConfig) {
 				idleTime = 0 // Reset idle time when changes are detected
 			} else {
 				idleTime += intervalTime
+				log.Info().Msgf("No changes detected, idle time: %.2f minutes", idleTime)
 				if idleTime >= float64(config.MaxIdleTime)/60 {
-					log.Info().Msg("Max idle time reached, stopping notifications.")
-					continue // Stop notifications once max idle time is reached
+					log.Info().Msg("Max idle time reached, suppressing further idle notifications.")
+					continue
 				}
-				for i, notification := range config.NotificationSet {
-					log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
+				for _, notification := range config.NotificationSet {
 					if notification.IsIdle {
 						notificationMessage := constructNotificationMessage(notification, changeDifference, idleTime, false)
 						log.Info().Msgf(notificationMessage)
