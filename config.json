@@ -4,7 +4,7 @@
             "path": "./feeds/rolling_log/",
             "source_type": "dir",
             "notification_config": {
-                "notification_interval": 300,
+                "notification_interval": 600,
                 "notification_set": [
                     {
                         "notification_head": "You have made",
@@ -12,19 +12,19 @@
                         "notification_tail": "Good luck!!"
                     },
                     {
-                        "notification_head": "Are you saving your work? You have not saved ",
+                        "notification_head": "Are you saving your work? You have not saved",
                         "on_idle": "in the last",
                         "notification_tail": "Good luck!!"
                     }
                 ],
-                "max_idle_time": 600
+                "max_idle_time": 6000
             }
         },
         {
             "path": "./feeds/git_file/test.file",
             "source_type": "git_file",
             "notification_config": {
-                "notification_interval": 600,
+                "notification_interval": 1800,
                 "notification_set": [
                     {
                         "notification_head": "You have made",
@@ -37,7 +37,7 @@
                         "notification_tail": "!!Good luck!!"
                     }
                 ],
-                "max_idle_time": 1800
+                "max_idle_time": 6000
             }
         }
     ],

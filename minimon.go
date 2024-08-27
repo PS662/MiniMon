@@ -20,16 +20,37 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type Notification struct {
+	NotificationHead string `json:"notification_head"`
+	OnChange         string `json:"on_change"`
+	OnIdle           string `json:"on_idle"`
+	NotificationTail string `json:"notification_tail"`
+	IsIdle           bool   `json:"is_idle"`
+	IsIdleText       string `json:"is_idle_text"`
+	IsChange         bool   `json:"is_change"`
+	IsChangeText     string `json:"is_change_text"`
+}
+
+type NotificationConfig struct {
+	NotificationInterval int            `json:"notification_interval"`
+	NotificationSet      []Notification `json:"notification_set"`
+	MaxIdleTime          int            `json:"max_idle_time"`
+}
+
 type Source struct {
-	Path       string `json:"path"`
-	SourceType string `json:"source_type"`
+	Path               string             `json:"path"`
+	SourceType         string             `json:"source_type"`
+	NotificationConfig NotificationConfig `json:"notification_config"`
+}
+
+type MonitorProps struct {
+	LogDir   string `json:"log_dir"`
+	LogLevel string `json:"log_level"`
 }
 
 type Config struct {
-	MonitorSources       []Source `json:"monitor_sources"`
-	LogDir               string   `json:"log_dir"`
-	NotificationInterval int      `json:"notification_interval"`
-	LogLevel             string   `json:"log_level"`
+	MonitorSources []Source     `json:"monitor_sources"`
+	MonitorProps   MonitorProps `json:"monitor_props"`
 }
 
 func loadConfig(configPath string) (*Config, error) {
@@ -44,7 +65,24 @@ func loadConfig(configPath string) (*Config, error) {
 	}
 
 	// Normalize log level to lowercase
-	config.LogLevel = strings.ToLower(config.LogLevel)
+	config.MonitorProps.LogLevel = strings.ToLower(config.MonitorProps.LogLevel)
+
+	// Set notification flags based on the configuration
+	for i := range config.MonitorSources {
+		for j := range config.MonitorSources[i].NotificationConfig.NotificationSet {
+			notification := &config.MonitorSources[i].NotificationConfig.NotificationSet[j]
+			notification.IsChange = false
+			notification.IsIdle = false
+			if notification.OnChange != "" {
+				notification.IsChange = true
+				notification.IsChangeText = notification.OnChange
+			}
+			if notification.OnIdle != "" {
+				notification.IsIdle = true
+				notification.IsIdleText = notification.OnIdle
+			}
+		}
+	}
 
 	return &config, nil
 }
@@ -83,7 +121,22 @@ func setupLogging(logDir, logLevel string) (*os.File, error) {
 	return logFile, err
 }
 
-func monitorDirectory(path string, interval time.Duration) {
+func constructNotificationMessage(notification Notification, changeCount int, timeInterval float64, onChange bool) string {
+	if onChange && notification.IsChangeText != "" {
+		return fmt.Sprintf("%s %d %s %.2f minutes. %s",
+			notification.NotificationHead, changeCount, notification.IsChangeText, timeInterval, notification.NotificationTail)
+	} else if !onChange && notification.IsIdleText != "" {
+		return fmt.Sprintf("%s %s %.2f minutes %s",
+			notification.NotificationHead, notification.IsIdleText, timeInterval, notification.NotificationTail)
+	}
+	// Default notification message if all fields are empty or absent
+	if onChange {
+		return fmt.Sprintf("activity notification: %d changes in %.2f minutes", changeCount, timeInterval)
+	}
+	return fmt.Sprintf("idle notification: idle time: %.2f minutes", timeInterval)
+}
+
+func monitorDirectory(path string, config NotificationConfig) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create watcher")
@@ -91,7 +144,9 @@ func monitorDirectory(path string, interval time.Duration) {
 	defer watcher.Close()
 
 	changeCount := 0
-	ticker := time.NewTicker(interval)
+	idleTime := 0.0
+	intervalTime := float64(config.NotificationInterval) / 60.0
+	ticker := time.NewTicker(time.Duration(config.NotificationInterval) * time.Second)
 
 	go func() {
 		for {
@@ -103,6 +158,7 @@ func monitorDirectory(path string, interval time.Duration) {
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					changeCount++
 					log.Info().Int("changes", changeCount).Msg("Accumulating changes in directory")
+					idleTime = 0 // Reset idle time when a change is detected
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -111,15 +167,39 @@ func monitorDirectory(path string, interval time.Duration) {
 				log.Error().Err(err).Msg("Watcher error")
 			case <-ticker.C:
 				if changeCount > 0 {
-					notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeCount, interval.Minutes())
-					log.Info().Msgf(notificationMessage)
-					beeep.Notify("MiniMon Notification", notificationMessage, "")
+					log.Info().Msgf("Change detected, preparing to send change notifications. Change count: %d", changeCount)
+					for i, notification := range config.NotificationSet {
+						log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
+						if notification.IsChange {
+							notificationMessage := constructNotificationMessage(notification, changeCount, intervalTime, true)
+							log.Info().Msgf("Sending change notification: %s", notificationMessage)
+							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
+							if err != nil {
+								log.Error().Err(err).Msg("Failed to send change notification")
+							}
+						}
+					}
 					changeCount = 0
 				} else {
-					notificationMessage := fmt.Sprintf("Are you saving your work? You have not saved in the last %.2f minutes.", interval.Minutes())
-					log.Info().Msgf(notificationMessage)
-					beeep.Notify("MiniMon Notification", notificationMessage, "")
+					idleTime += intervalTime
+					log.Info().Msgf("No changes detected, idle time: %.2f minutes", idleTime)
+					if idleTime >= float64(config.MaxIdleTime)/60 {
+						log.Info().Msg("Max idle time reached, stopping notifications.")
+						continue
+					}
+					for i, notification := range config.NotificationSet {
+						log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
+						if notification.IsIdle {
+							notificationMessage := constructNotificationMessage(notification, changeCount, idleTime, false)
+							log.Info().Msgf("Sending idle notification: %s", notificationMessage)
+							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
+							if err != nil {
+								log.Error().Err(err).Msg("Failed to send idle notification")
+							}
+						}
+					}
 				}
+
 			}
 		}
 	}()
@@ -132,14 +212,16 @@ func monitorDirectory(path string, interval time.Duration) {
 	select {}
 }
 
-func monitorGit(filePath string, interval time.Duration) {
-	ticker := time.NewTicker(interval)
+func monitorGit(filePath string, config NotificationConfig) {
+	ticker := time.NewTicker(time.Duration(config.NotificationInterval) * time.Second)
 	defer ticker.Stop()
 
 	var initialChangeCount int
 	var previousChangeCount int
 	var totalChangeCount int
 	var initialized bool
+	idleTime := 0.0
+	intervalTime := float64(config.NotificationInterval) / 60.0
 
 	// Function to fetch the current change count using git diff
 	getChangeCount := func() (int, error) {
@@ -215,16 +297,29 @@ func monitorGit(filePath string, interval time.Duration) {
 			totalChangeCount += changeDifference
 			log.Info().Int("changes", totalChangeCount).Msg("Total changes till now")
 
-			// Log and notify based on the difference
 			if changeDifference > 0 {
-				log.Info().Int("changes", changeDifference).Msg("Accumulating changes from git monitoring")
-				notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeDifference, interval.Minutes())
-				log.Info().Msgf(notificationMessage)
-				beeep.Notify("MiniMon Notification", notificationMessage, "")
+				for _, notification := range config.NotificationSet {
+					if notification.IsChange {
+						notificationMessage := constructNotificationMessage(notification, changeDifference, intervalTime, true)
+						log.Info().Msgf(notificationMessage)
+						beeep.Notify("MiniMon Notification", notificationMessage, "")
+					}
+				}
+				idleTime = 0 // Reset idle time when changes are detected
 			} else {
-				notificationMessage := fmt.Sprintf("You have not made any new changes for the last %.2f minutes!!", interval.Minutes())
-				log.Info().Msgf(notificationMessage)
-				beeep.Notify("MiniMon Notification", notificationMessage, "")
+				idleTime += intervalTime
+				if idleTime >= float64(config.MaxIdleTime)/60 {
+					log.Info().Msg("Max idle time reached, stopping notifications.")
+					continue // Stop notifications once max idle time is reached
+				}
+				for i, notification := range config.NotificationSet {
+					log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
+					if notification.IsIdle {
+						notificationMessage := constructNotificationMessage(notification, changeDifference, idleTime, false)
+						log.Info().Msgf(notificationMessage)
+						beeep.Notify("MiniMon Notification", notificationMessage, "")
+					}
+				}
 			}
 
 			// Update the previousChangeCount
@@ -246,7 +341,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Error loading config")
 	}
 
-	logFile, err := setupLogging(config.LogDir, config.LogLevel)
+	logFile, err := setupLogging(config.MonitorProps.LogDir, config.MonitorProps.LogLevel)
 	if err != nil {
 		log.Warn().Msgf("Warning: %v. Skipping file logging.", err)
 	} else if logFile != nil {
@@ -266,7 +361,7 @@ func main() {
 					log.Warn().Msgf("Invalid source: %s (%s)", source.SourceType, source.Path)
 					continue
 				}
-				go monitorDirectory(source.Path, time.Duration(config.NotificationInterval)*time.Second)
+				go monitorDirectory(source.Path, source.NotificationConfig)
 
 			case "git_file", "file":
 				if _, err := os.Stat(source.Path); os.IsNotExist(err) {
@@ -274,7 +369,7 @@ func main() {
 					continue
 				}
 				if source.SourceType == "git_file" {
-					go monitorGit(source.Path, time.Duration(config.NotificationInterval)*time.Second)
+					go monitorGit(source.Path, source.NotificationConfig)
 				}
 
 			default:
