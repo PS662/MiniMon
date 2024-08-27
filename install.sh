@@ -1,14 +1,20 @@
 #!/bin/bash
 
+# Check if correct number of arguments are provided
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <username> <group>"
+    exit 1
+fi
+
+# Get the username and group from the arguments
+USERNAME=$1
+GROUP=$2
+
 # Get the current directory
 MINIMON_DIR=$(pwd)
 MINIMON_BINARY="$MINIMON_DIR/minimon"
-SERVICE_FILE="/etc/systemd/system/minimon.service"
+SERVICE_FILE="/etc/systemd/system/minimon-${USERNAME}.service"
 CONFIG_PATH="$MINIMON_DIR/config.json"
-
-# Replace placeholders
-USERNAME=$(whoami)
-GROUP=$(id -gn)
 
 # Build the Go program
 echo "Building MiniMon..."
@@ -26,10 +32,10 @@ if [ $? -ne 0 ]; then
 fi
 
 # Create the systemd service file
-echo "Creating systemd service file..."
+echo "Creating systemd service file for $USERNAME..."
 sudo bash -c "cat > $SERVICE_FILE" <<EOL
 [Unit]
-Description=MiniMon Log Monitoring Service
+Description=MiniMon Log Monitoring Service for $USERNAME
 After=network.target
 
 [Service]
@@ -49,12 +55,12 @@ echo "Reloading systemd..."
 sudo systemctl daemon-reload
 
 # Enable the service to start at boot
-echo "Enabling MiniMon service..."
-sudo systemctl enable minimon.service
+echo "Enabling MiniMon service for $USERNAME..."
+sudo systemctl enable minimon-${USERNAME}.service
 
 # Start the service immediately
-echo "Starting MiniMon service..."
-sudo systemctl start minimon.service
+echo "Starting MiniMon service for $USERNAME..."
+sudo systemctl start minimon-${USERNAME}.service
 
 # Display the service status
-sudo systemctl status minimon.service
+sudo systemctl status minimon-${USERNAME}.service
