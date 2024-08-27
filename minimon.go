@@ -202,8 +202,9 @@ func monitorGit(filePath string, interval time.Duration) {
 					beeep.Notify("MiniMon Notification", notificationMessage, "")
 				}
 			} else {
-				// Log that no new changes were detected
-				log.Info().Msg("No new changes detected since the last interval.")
+				notificationMessage := fmt.Sprintf("You have not made any new changes for the last %.2f minutes!!", interval.Minutes())
+				log.Info().Msgf(notificationMessage)
+				beeep.Notify("MiniMon Notification", notificationMessage, "")
 			}
 		}
 	}()
