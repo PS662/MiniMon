@@ -3,25 +3,11 @@
 
 MiniMon is a lightweight log monitoring tool that tracks changes in specified sources (directories, files, or processes) and provides summary notifications within a configurable interval.
 
-## Project Structure
-
-```plaintext
-MiniMon/
-├── config.json
-├── feeds/
-│   └── disk_rolling_log_feed_py/
-│       ├── minimon_feed.py
-│       └── temp_test/
-├── go.mod
-├── go.sum
-├── minimon.go
-└── testdata/
-```
 
 ### Key Components
 
 - **`config.json`**: Configuration for monitoring sources, log directory, and notification intervals.
-- **`feeds/disk_rolling_log_feed_py/minimon_feed.py`**: Python script that generates simulated logs.
+- **`feeds/rolling_log/minimon_feed.py`**: Example Python script that generates simulated logs.
 - **`minimon.go`**: Main Go program for monitoring sources.
 - **`go.mod`** and **`go.sum`**: Go module files for dependency management.
 
@@ -29,8 +15,8 @@ MiniMon/
 
 1. **Run the Python Log Generator**:
     ```bash
-    cd feeds/disk_rolling_log_feed_py/
-    python3 minimon_feed.py temp_test/
+    cd feeds/rolling_log/
+    python3 minimon_feed.py <out_log_dir>
     ```
 
 2. **Run the Go Monitoring Program**:
@@ -39,24 +25,6 @@ MiniMon/
     go run minimon.go
     ```
 
-Sample Go output if there are invalid sources:
-```plaintext
-Invalid source: mon_src4 (/path/to/directory2)
-Invalid source: mon_src2 (1234)
-Invalid source: mon_src3 (/path/to/file.log)
-```
-
-### Setup
-
-- Initialize Go module:
-    ```bash
-    go mod init minimon
-    ```
-- Install dependencies:
-    ```bash
-    go get github.com/fsnotify/fsnotify
-    go get github.com/gen2brain/beeep
-    ```
 
 MiniMon monitors valid sources and provides notifications summarizing changes within each interval.
 
@@ -86,7 +54,7 @@ You can run `minimon.go` at startup by following these steps:
 
     ```
     chmod +x install.sh
-    sudo ./install.sh
+    ./install.sh <user> <group>
     ```
 
 Logs can be viewed with:

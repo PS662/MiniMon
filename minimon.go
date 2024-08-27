@@ -7,9 +7,11 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -132,6 +134,7 @@ func monitorDirectory(path string, interval time.Duration) {
 
 func monitorGit(filePath string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 
 	var initialChangeCount int
 	var previousChangeCount int
@@ -141,7 +144,7 @@ func monitorGit(filePath string, interval time.Duration) {
 	// Function to fetch the current change count using git diff
 	getChangeCount := func() (int, error) {
 		cmdGetRepoPath := exec.Command("git", "rev-parse", "--show-toplevel")
-		cmdGetRepoPath.Dir = filepath.Dir(filePath) // Set the directory to the file's directory
+		cmdGetRepoPath.Dir = filepath.Dir(filePath)
 		var repoPathOut bytes.Buffer
 		cmdGetRepoPath.Stdout = &repoPathOut
 		err := cmdGetRepoPath.Run()
@@ -157,7 +160,7 @@ func monitorGit(filePath string, interval time.Duration) {
 			return 0, err
 		}
 
-		// Check for git diff changes and emit notifications
+		// Run git diff to check for changes
 		cmd := exec.Command("git", "diff", "--numstat", "HEAD", filePath)
 		var out bytes.Buffer
 		cmd.Stdout = &out
@@ -166,7 +169,6 @@ func monitorGit(filePath string, interval time.Duration) {
 		// Handle exit status 1 (no differences found)
 		if err != nil {
 			if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
-				// Exit status 1 indicates no changes, which is not an error for our purpose
 				log.Info().Msg("No changes detected by git diff")
 				return 0, nil
 			} else {
@@ -199,7 +201,7 @@ func monitorGit(filePath string, interval time.Duration) {
 				continue
 			}
 
-			// On the first run, log the initial change count
+			// On the first run, initialize counts
 			if !initialized {
 				initialChangeCount = currentChangeCount
 				previousChangeCount = currentChangeCount
@@ -208,7 +210,7 @@ func monitorGit(filePath string, interval time.Duration) {
 				continue
 			}
 
-			// Calculate the absolute difference between the previous and current change count
+			// Calculate the difference and update counts
 			changeDifference := int(math.Abs(float64(currentChangeCount - previousChangeCount)))
 			totalChangeCount += changeDifference
 			log.Info().Int("changes", totalChangeCount).Msg("Total changes till now")
@@ -251,16 +253,44 @@ func main() {
 		defer logFile.Close()
 	}
 
-	for _, source := range config.MonitorSources {
-		switch source.SourceType {
-		case "dir":
-			go monitorDirectory(source.Path, time.Duration(config.NotificationInterval)*time.Second)
-		case "git_file":
-			go monitorGit(source.Path, time.Duration(config.NotificationInterval)*time.Second)
-		default:
-			log.Warn().Msgf("Unsupported source type: %s", source.SourceType)
-		}
-	}
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 
-	select {}
+	doneChan := make(chan struct{})
+
+	go func() {
+		for _, source := range config.MonitorSources {
+			switch source.SourceType {
+			case "dir":
+				if _, err := os.Stat(source.Path); os.IsNotExist(err) {
+					log.Warn().Msgf("Invalid source: %s (%s)", source.SourceType, source.Path)
+					continue
+				}
+				go monitorDirectory(source.Path, time.Duration(config.NotificationInterval)*time.Second)
+
+			case "git_file", "file":
+				if _, err := os.Stat(source.Path); os.IsNotExist(err) {
+					log.Warn().Msgf("Invalid source: %s (%s)", source.SourceType, source.Path)
+					continue
+				}
+				if source.SourceType == "git_file" {
+					go monitorGit(source.Path, time.Duration(config.NotificationInterval)*time.Second)
+				}
+
+			default:
+				log.Warn().Msgf("Unsupported source type: %s", source.SourceType)
+			}
+		}
+
+		// Blocking wait until the stop signal is received
+		<-stopChan
+		log.Info().Msg("Shutting down MiniMon...")
+
+		// Perform cleanup and exit
+		close(doneChan)
+	}()
+
+	// Wait until graceful shutdown is completed
+	<-doneChan
+	log.Info().Msg("MiniMon exited gracefully.")
 }

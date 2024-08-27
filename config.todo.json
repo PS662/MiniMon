@@ -1,0 +1,32 @@
+{
+    "monitor_sources": [
+        {
+            "path": "./feeds/rolling_log/",
+            "source_type": "dir"
+        },
+        {
+            "path": "./feeds/git_file/test.file",
+            "source_type": "git_file",
+            "notification_config": {
+                "notification_interval": 600,
+                "notification_set": [
+                    {
+                        "notification_head": "You have made",
+                        "on_change": "changes in the last",
+                        "notification_tail": "Good luck!!"
+                    },
+                    {
+                        "notification_head": "Are you saving your work? You have not saved in the last",
+                        "on_idle": "Idle for",
+                        "notification_tail": "Good luck!!"
+                    }
+                ],
+                "max_idle_time": 1800
+            }
+        }
+    ],
+    "monitor_props": {
+        "log_dir": "./logs",
+        "log_level": "console"
+    }
+}

@@ -1,11 +1,11 @@
 {
   "monitor_sources": [
     {
-      "path": "./feeds/disk_rolling_log_feed_py/temp_test/",
+      "path": "./feeds/rolling_log/",
       "source_type": "dir"
     },
     {
-      "path": "./feeds/git_file/test_file.git",
+      "path": "./feeds/git_file/test.file",
       "source_type": "git_file"
     }
   ],

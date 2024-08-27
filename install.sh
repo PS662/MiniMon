@@ -45,6 +45,8 @@ Environment="MINIMON_CONFIG=$CONFIG_PATH"
 Restart=always
 User=$USERNAME
 Group=$GROUP
+KillSignal=SIGINT
+TimeoutStopSec=20
 
 [Install]
 WantedBy=multi-user.target
