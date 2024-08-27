@@ -108,7 +108,7 @@ func monitorDirectory(path string, interval time.Duration) {
 				log.Error().Err(err).Msg("Watcher error")
 			case <-ticker.C:
 				if changeCount > 0 {
-					notificationMessage := fmt.Sprintf("You have made %d saves in the last %.2f minutes.", changeCount, interval.Minutes())
+					notificationMessage := fmt.Sprintf("You have made %d changes in the last %.2f minutes.", changeCount, interval.Minutes())
 					log.Info().Msgf(notificationMessage)
 					beeep.Notify("MiniMon Notification", notificationMessage, "")
 					changeCount = 0
@@ -135,16 +135,41 @@ func monitorGit(filePath string, interval time.Duration) {
 
 	go func() {
 		for range ticker.C {
-			changeCount := 0
+			changeCount := 0 // Reset changeCount at the start of every interval
+
+			// Extract the Git repository path from the file path
+			cmdGetRepoPath := exec.Command("git", "rev-parse", "--show-toplevel")
+			cmdGetRepoPath.Dir = filepath.Dir(filePath) // Set the directory to the file's directory
+			var repoPathOut bytes.Buffer
+			cmdGetRepoPath.Stdout = &repoPathOut
+			err := cmdGetRepoPath.Run()
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to determine Git repository path")
+				continue
+			}
+
+			gitRepoPath := strings.TrimSpace(repoPathOut.String())
+
+			if err := os.Chdir(gitRepoPath); err != nil {
+				log.Error().Err(err).Msgf("Failed to change directory to %s", gitRepoPath)
+				continue
+			}
 
 			// Check for git diff changes and emit notifications
 			cmd := exec.Command("git", "diff", "--numstat", "HEAD", filePath)
 			var out bytes.Buffer
 			cmd.Stdout = &out
-			err := cmd.Run()
+			err = cmd.Run()
+
+			// Handle exit status 1 (no differences found)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to run git diff")
-				continue
+				if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+					// Exit status 1 indicates no changes, which is not an error for our purpose
+					log.Info().Msg("No changes detected by git diff")
+				} else {
+					log.Error().Err(err).Msg("Failed to run git diff")
+					continue
+				}
 			}
 
 			// Parse the output to count the number of lines changed
@@ -161,7 +186,9 @@ func monitorGit(filePath string, interval time.Duration) {
 				}
 			}
 
-			if changeCount != previousChangeCount || changeCount == 0 {
+			// Compare the current change count with the previous cached change count
+			if changeCount != previousChangeCount {
+				// Update the previousChangeCount cache
 				previousChangeCount = changeCount
 
 				if changeCount > 0 {
@@ -170,20 +197,20 @@ func monitorGit(filePath string, interval time.Duration) {
 					log.Info().Msgf(notificationMessage)
 					beeep.Notify("MiniMon Notification", notificationMessage, "")
 				} else {
-					notificationMessage := fmt.Sprintf("You have not made any changes for the last %.2f minutes!!", interval.Minutes())
+					notificationMessage := fmt.Sprintf("Are you saving your work? You have not saved in the last %.2f minutes.", interval.Minutes())
 					log.Info().Msgf(notificationMessage)
 					beeep.Notify("MiniMon Notification", notificationMessage, "")
 				}
 			} else {
-				notificationMessage := fmt.Sprintf("You have not made any new changes for the last %.2f minutes!!", interval.Minutes())
-				log.Info().Msgf(notificationMessage)
-				beeep.Notify("MiniMon Notification", notificationMessage, "")
+				// Log that no new changes were detected
+				log.Info().Msg("No new changes detected since the last interval.")
 			}
 		}
 	}()
 
 	select {}
 }
+
 
 func main() {
 	configPath := os.Getenv("MINIMON_CONFIG")
