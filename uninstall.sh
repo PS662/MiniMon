@@ -5,6 +5,8 @@ if [ $# -ne 2 ]; then
     echo "Usage: $0 <username> <group>"
     exit 1
 fi
+USERNAME=$1
+GROUP=$2
 
 SERVICE_FILE="/etc/systemd/system/minimon-${USERNAME}.service"
 
