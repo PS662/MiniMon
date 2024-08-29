@@ -144,6 +144,7 @@ func monitorDirectory(path string, config NotificationConfig) {
 	defer watcher.Close()
 
 	changeCount := 0
+	totalChangeCount := 0 // Track total changes over time
 	idleTime := 0.0
 	intervalTime := float64(config.NotificationInterval) / 60.0
 	ticker := time.NewTicker(time.Duration(config.NotificationInterval) * time.Second)
@@ -157,7 +158,8 @@ func monitorDirectory(path string, config NotificationConfig) {
 				}
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					changeCount++
-					log.Info().Int("changes", changeCount).Msg("Accumulating changes in directory")
+					totalChangeCount++
+					log.Info().Msgf("Accumulating changes in directory: %d changes, total changes: %d", changeCount, totalChangeCount)
 					idleTime = 0 // Reset idle time when a change is detected
 				}
 			case err, ok := <-watcher.Errors:
@@ -167,12 +169,10 @@ func monitorDirectory(path string, config NotificationConfig) {
 				log.Error().Err(err).Msg("Watcher error")
 			case <-ticker.C:
 				if changeCount > 0 {
-					//log.Info().Msgf("Change detected, preparing to send change notifications. Change count: %d", changeCount)
 					for _, notification := range config.NotificationSet {
-						//log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
 						if notification.IsChange {
 							notificationMessage := constructNotificationMessage(notification, changeCount, intervalTime, true)
-							//log.Info().Msgf("Sending change notification: %s", notificationMessage)
+							log.Info().Msgf("Sending change notification: %s", notificationMessage)
 							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 							if err != nil {
 								log.Error().Err(err).Msg("Failed to send dir change notification")
@@ -188,10 +188,9 @@ func monitorDirectory(path string, config NotificationConfig) {
 						continue
 					}
 					for _, notification := range config.NotificationSet {
-						//log.Info().Msgf("Processing notification %d: %+v", i+1, notification)
 						if notification.IsIdle {
 							notificationMessage := constructNotificationMessage(notification, changeCount, idleTime, false)
-							//log.Info().Msgf("Sending idle notification: %s", notificationMessage)
+							log.Info().Msgf("Sending idle notification: %s", notificationMessage)
 							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 							if err != nil {
 								log.Error().Err(err).Msg("Failed to send dir idle notification")
@@ -199,7 +198,6 @@ func monitorDirectory(path string, config NotificationConfig) {
 						}
 					}
 				}
-
 			}
 		}
 	}()
@@ -297,13 +295,12 @@ func monitorGit(filePath string, config NotificationConfig) {
 			// Calculate the difference and update counts
 			changeDifference := int(math.Abs(float64(currentChangeCount - previousChangeCount)))
 			totalChangeCount += changeDifference
-			log.Info().Int("changes", totalChangeCount).Msg("Total changes till now")
-
+			log.Info().Msgf("Total changes till now: %d changes", totalChangeCount)
 			if changeDifference > 0 {
 				for _, notification := range config.NotificationSet {
 					if notification.IsChange {
 						notificationMessage := constructNotificationMessage(notification, changeDifference, intervalTime, true)
-						log.Info().Msgf(notificationMessage)
+						log.Info().Msgf("Sending git change notification: %s", notificationMessage)
 						err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 						if err != nil {
 							log.Error().Err(err).Msg("Failed to send git change notification")
@@ -322,6 +319,7 @@ func monitorGit(filePath string, config NotificationConfig) {
 					if notification.IsIdle {
 						notificationMessage := constructNotificationMessage(notification, changeDifference, idleTime, false)
 						log.Info().Msgf(notificationMessage)
+						log.Info().Msgf("Sending git idle notification: %s", notificationMessage)
 						err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 						if err != nil {
 							log.Error().Err(err).Msg("Failed to send git idle notification")
