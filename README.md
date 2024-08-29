@@ -36,7 +36,7 @@ You can run `minimon.go` at startup by following these steps:
 
     ```bash
     chmod +x install.sh
-    sudo ./install.sh
+    ./install.sh <user> <group>
     ```
 
 2. The script will:
@@ -53,8 +53,8 @@ You can run `minimon.go` at startup by following these steps:
 4. To remove run:
 
     ```
-    chmod +x install.sh
-    ./install.sh <user> <group>
+    chmod +x uninstall.sh
+    ./uninstall.sh <user> <group>
     ```
 
 Logs can be viewed with:
