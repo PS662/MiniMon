@@ -159,7 +159,7 @@ func monitorDirectory(path string, config NotificationConfig) {
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					changeCount++
 					totalChangeCount++
-					log.Info().Msgf("Accumulating changes in directory: %d changes, total changes: %d", changeCount, totalChangeCount)
+					log.Info().Msgf("Accumulating changes for directory: %d changes, total changes: %d", changeCount, totalChangeCount)
 					idleTime = 0 // Reset idle time when a change is detected
 				}
 			case err, ok := <-watcher.Errors:
@@ -295,7 +295,7 @@ func monitorGit(filePath string, config NotificationConfig) {
 			// Calculate the difference and update counts
 			changeDifference := int(math.Abs(float64(currentChangeCount - previousChangeCount)))
 			totalChangeCount += changeDifference
-			log.Info().Msgf("Total changes till now: %d changes", totalChangeCount)
+			log.Info().Msgf("Accumulating changes for git: %d changes, total changes: %d", changeDifference, totalChangeCount)
 			if changeDifference > 0 {
 				for _, notification := range config.NotificationSet {
 					if notification.IsChange {
