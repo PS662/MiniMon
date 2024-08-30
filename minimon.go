@@ -172,7 +172,7 @@ func monitorDirectory(path string, config NotificationConfig) {
 					for _, notification := range config.NotificationSet {
 						if notification.IsChange {
 							notificationMessage := constructNotificationMessage(notification, changeCount, intervalTime, true)
-							log.Info().Msgf("Sending change notification: %s", notificationMessage)
+							log.Debug().Msgf("Sending dir change notification: %s", notificationMessage)
 							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 							if err != nil {
 								log.Error().Err(err).Msg("Failed to send dir change notification")
@@ -182,15 +182,15 @@ func monitorDirectory(path string, config NotificationConfig) {
 					changeCount = 0
 				} else {
 					idleTime += intervalTime
-					log.Info().Msgf("No changes detected, idle time: %.2f minutes", idleTime)
 					if idleTime >= float64(config.MaxIdleTime)/60 {
-						log.Info().Msg("Max idle time reached, stopping notifications.")
+						log.Info().Msg("Max idle time reached for dir, stopping notifications.")
 						continue
 					}
+					log.Info().Msgf("No dir changes detected, idle time: %.2f minutes", idleTime)
 					for _, notification := range config.NotificationSet {
 						if notification.IsIdle {
 							notificationMessage := constructNotificationMessage(notification, changeCount, idleTime, false)
-							log.Info().Msgf("Sending idle notification: %s", notificationMessage)
+							log.Debug().Msgf("Sending dir idle notification: %s", notificationMessage)
 							err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 							if err != nil {
 								log.Error().Err(err).Msg("Failed to send dir idle notification")
@@ -300,7 +300,7 @@ func monitorGit(filePath string, config NotificationConfig) {
 				for _, notification := range config.NotificationSet {
 					if notification.IsChange {
 						notificationMessage := constructNotificationMessage(notification, changeDifference, intervalTime, true)
-						log.Info().Msgf("Sending git change notification: %s", notificationMessage)
+						log.Debug().Msgf("Sending git change notification: %s", notificationMessage)
 						err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 						if err != nil {
 							log.Error().Err(err).Msg("Failed to send git change notification")
@@ -310,16 +310,15 @@ func monitorGit(filePath string, config NotificationConfig) {
 				idleTime = 0 // Reset idle time when changes are detected
 			} else {
 				idleTime += intervalTime
-				log.Info().Msgf("No changes detected, idle time: %.2f minutes", idleTime)
 				if idleTime >= float64(config.MaxIdleTime)/60 {
-					log.Info().Msg("Max idle time reached, suppressing further idle notifications.")
+					log.Info().Msg("Max idle time reached for git, suppressing further idle notifications.")
 					continue
 				}
+				log.Info().Msgf("No git changes detected, idle time: %.2f minutes", idleTime)
 				for _, notification := range config.NotificationSet {
 					if notification.IsIdle {
 						notificationMessage := constructNotificationMessage(notification, changeDifference, idleTime, false)
-						log.Info().Msgf(notificationMessage)
-						log.Info().Msgf("Sending git idle notification: %s", notificationMessage)
+						log.Debug().Msgf("Sending git idle notification: %s", notificationMessage)
 						err := beeep.Notify("MiniMon Notification", notificationMessage, "")
 						if err != nil {
 							log.Error().Err(err).Msg("Failed to send git idle notification")
